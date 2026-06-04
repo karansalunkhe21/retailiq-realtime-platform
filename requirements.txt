@@ -1,0 +1,8 @@
+kafka-python
+pandas
+numpy
+faker
+python-dotenv
+confluent-kafka
+snowflake-connector-python 
+python-dotenv
