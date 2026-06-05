@@ -1,67 +1,102 @@
-import json
-import os
 import sys
-import uuid
-from datetime import datetime
-
-# Add project root to sys.path to allow imports of local packages
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
+import os
+import json
 from kafka import KafkaConsumer
-from snowflake.connection import get_connection
+from datetime import datetime
+import uuid
 
-# Kafka Consumer
-consumer = KafkaConsumer(
-    "retail_events",
-    bootstrap_servers="localhost:9092",
-    value_deserializer=lambda x: json.loads(x.decode("utf-8"))
-)
+# Add project root to sys.path to allow running script directly
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Snowflake connection
+from snowflake_conn.connection import get_connection
+
 conn = get_connection()
 cursor = conn.cursor()
 
-print("🚀 Consumer started... Listening to Kafka")
+consumer = KafkaConsumer(
+    'product_views',
+    'cart_events',
+    'orders',
+    'returns',
+    'inventory_alerts',
+    bootstrap_servers='localhost:9092',
+    value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+)
+
+print("🚀 Snowflake consumer started...")
 
 for message in consumer:
 
     event = message.value
+    topic = message.topic
 
-    # Add metadata (VERY IMPORTANT in real systems)
-    event_id = str(uuid.uuid4())
-    ingested_at = datetime.utcnow()
+    event_id = event.get("event_id", str(uuid.uuid4()))
+    timestamp = event.get("timestamp", datetime.utcnow().isoformat())
 
-    query = """
-    INSERT INTO RETAILIQ.RAW.RETAIL_EVENTS (
-        event_id,
-        event_type,
-        customer_id,
-        product_id,
-        store_id,
-        quantity,
-        price,
-        total_amount,
-        reason,
-        event_timestamp,
-        ingested_at
-    )
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-    """
+    # -----------------------
+    # ROUTING TO TABLES
+    # -----------------------
 
-    cursor.execute(query, (
-        event_id,
-        event.get("event_type"),
-        event.get("customer_id"),
-        event.get("product_id"),
-        event.get("store_id"),
-        event.get("quantity"),
-        event.get("price"),
-        event.get("total_amount"),
-        event.get("reason"),
-        event.get("timestamp"),
-        ingested_at
-    ))
+    if topic == "product_views":
+        cursor.execute("""
+            INSERT INTO PRODUCT_VIEWS VALUES (%s,%s,%s,%s,%s,%s)
+        """, (
+            event_id,
+            event.get("event_type"),
+            event.get("customer_id"),
+            event.get("product_id"),
+            event.get("store_id"),
+            timestamp
+        ))
+
+    elif topic == "cart_events":
+        cursor.execute("""
+            INSERT INTO CART_EVENTS VALUES (%s,%s,%s,%s,%s,%s)
+        """, (
+            event_id,
+            event.get("event_type"),
+            event.get("customer_id"),
+            event.get("product_id"),
+            event.get("store_id"),
+            timestamp
+        ))
+
+    elif topic == "orders":
+        cursor.execute("""
+            INSERT INTO ORDERS VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            event_id,
+            event.get("customer_id"),
+            event.get("product_id"),
+            event.get("store_id"),
+            event.get("quantity"),
+            event.get("price"),
+            event.get("total_amount"),
+            timestamp
+        ))
+
+    elif topic == "returns":
+        cursor.execute("""
+            INSERT INTO RETURNS VALUES (%s,%s,%s,%s,%s,%s)
+        """, (
+            event_id,
+            event.get("customer_id"),
+            event.get("product_id"),
+            event.get("store_id"),
+            event.get("reason"),
+            timestamp
+        ))
+
+    elif topic == "inventory_alerts":
+        cursor.execute("""
+            INSERT INTO INVENTORY_ALERTS VALUES (%s,%s,%s,%s)
+        """, (
+            event.get("event_type"),
+            event.get("product_id"),
+            event.get("remaining_qty"),
+            timestamp
+        ))
 
     conn.commit()
 
-    print(f"✅ Inserted: {event['event_type']}")
+    print(f"Inserted from {topic}")
