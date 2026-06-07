@@ -6,3 +6,4 @@ python-dotenv
 confluent-kafka
 snowflake-connector-python 
 python-dotenv
+dbt-snowflake
