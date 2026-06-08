@@ -3,4 +3,7 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
-data/raw/
+data/seeds
+target/
+dbt_packages/
+logs/
