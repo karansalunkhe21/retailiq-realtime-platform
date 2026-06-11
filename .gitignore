@@ -7,3 +7,11 @@ data/seeds
 target/
 dbt_packages/
 logs/
+
+# Snowflake
+snowflake_credentials.json
+snowflake_config.json
+
+# Local dbt profile
+profiles.yml
+.vscode/
